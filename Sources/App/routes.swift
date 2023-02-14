@@ -4,7 +4,8 @@ import PostgresNIO
 
 func routes(_ app: Application) throws {
     
-
+    app.routes.defaultMaxBodySize = "100mb"
+    
     app.post("register") { req -> EventLoopFuture<ApiResponse> in
         let create = try req.content.decode(User.CreateUser.self)
         return User.query(on: req.db)
@@ -31,11 +32,11 @@ func routes(_ app: Application) throws {
                 }
             }
     }
-
+    
     
     app.post("login") { req -> EventLoopFuture<User> in
         let credentials = try req.content.decode(Credentials.self)
-
+        
         return User.query(on: req.db)
             .filter(\.$email == credentials.email)
             .filter(\.$password == credentials.password)
@@ -45,11 +46,11 @@ func routes(_ app: Application) throws {
     
     app.post("editUserDetails") { req -> EventLoopFuture<UserDetails> in
         let create = try req.content.decode(UserDetails.self)
-
+        
         guard let id = create.id else {
             return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "UserDetails must have an id"))
         }
-
+        
         return UserDetails.query(on: req.db)
             .filter(\.$id == id)
             .first()
@@ -72,5 +73,74 @@ func routes(_ app: Application) throws {
                 }
             }
     }
-
+    
+    app.get("userDetails", ":id") { req -> EventLoopFuture<UserDetails> in
+        
+        guard let id = req.parameters.get("id") else {
+            print(req.parameters)
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "An ID is requiered"))
+            
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        
+        return UserDetails.query(on: req.db)
+            .filter(\.$id == userUuid)
+            .first()
+            .unwrap(or: Abort(.notFound, reason: "Account not found"))
+    }
+    
+    app.get("accountInfo", ":id") { req -> EventLoopFuture<User> in
+        
+        guard let id = req.parameters.get("id") else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "An ID is requiered"))
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        return User.query(on: req.db)
+            .filter(\.$id == userUuid)
+            .first()
+            .unwrap(or: Abort(.notFound, reason: "Account not found"))
+    }
+    
+    app.put("changeEmail") { req -> EventLoopFuture<ApiResponse> in
+        guard let id = req.query[String.self, at: "id"], let newEmail = req.query[String.self, at: "email"] else {
+            throw Abort(.badRequest)
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        return User.query(on: req.db)
+            .filter(\.$email == newEmail)
+            .first()
+            .flatMap { existingUser in
+                if existingUser != nil {
+                    return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 409, message: "Email already in use"))
+                } else {
+                    return User.query(on: req.db)
+                        .filter(\.$id == userUuid)
+                        .first()
+                        .flatMap { user in
+                            if let user = user {
+                                user.email = newEmail
+                                return user.save(on: req.db).map {
+                                    return ApiResponse(statusCode: 201, message: "Email updated")
+                                }
+                            } else {
+                                return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 404, message: "Account not found"))
+                            }
+                        }
+                }
+            }
+    }
+    
 }
+
