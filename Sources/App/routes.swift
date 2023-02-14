@@ -142,5 +142,38 @@ func routes(_ app: Application) throws {
             }
     }
     
+    app.put("changePhoneNumber") { req -> EventLoopFuture<ApiResponse> in
+        guard let id = req.query[String.self, at: "id"], let newPhoneNumber = req.query[String.self, at: "phone"] else {
+            throw Abort(.badRequest)
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        return User.query(on: req.db)
+            .filter(\.$phone == newPhoneNumber)
+            .first()
+            .flatMap { existingUser in
+                if existingUser != nil {
+                    return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 409, message: "Phone number already in use"))
+                } else {
+                    return User.query(on: req.db)
+                        .filter(\.$id == userUuid)
+                        .first()
+                        .flatMap { user in
+                            if let user = user {
+                                user.phone = newPhoneNumber
+                                return user.save(on: req.db).map {
+                                    return ApiResponse(statusCode: 201, message: "Phone number updated")
+                                }
+                            } else {
+                                return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 404, message: "Account not found"))
+                            }
+                        }
+                }
+            }
+    }
+    
 }
 
