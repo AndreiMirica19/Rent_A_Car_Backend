@@ -34,14 +34,72 @@ func routes(_ app: Application) throws {
     }
     
     
-    app.post("login") { req -> EventLoopFuture<User> in
+    app.post("login") { req -> EventLoopFuture<Response> in
         let credentials = try req.content.decode(Credentials.self)
         
         return User.query(on: req.db)
             .filter(\.$email == credentials.email)
             .filter(\.$password == credentials.password)
             .first()
-            .unwrap(or: Abort(.unauthorized, reason: "Invalid email or password"))
+            .flatMap { user -> EventLoopFuture<Response> in
+                if let user = user {
+                    let response = Response(
+                        status: .ok,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(user)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        let apiResponse = ApiResponse(statusCode: 500, message: "Failed to encode user details")
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: apiResponse.message))
+                    }
+                } else {
+                    let apiResponse = ApiResponse(statusCode: 404, message: "User not found")
+                    let response = Response(
+                        status: .notFound,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(apiResponse)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Failed to encode API response"))
+                    }
+                }
+            }
+            .flatMapError { error in
+                if let error = error as? PostgresError {
+                    let apiResponse = ApiResponse(statusCode: 400, message: error.getErrorMessage())
+                    let response = Response(
+                        status: .badRequest,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(apiResponse)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Failed to encode API response"))
+                    }
+                } else {
+                    let apiResponse = ApiResponse(statusCode: 500, message: "Unexpected error occurred")
+                    let response = Response(
+                        status: .internalServerError,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(apiResponse)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Failed to encode API response"))
+                    }
+                }
+                
+            } 
     }
     
     app.post("editUserDetails") { req -> EventLoopFuture<UserDetails> in
@@ -74,24 +132,79 @@ func routes(_ app: Application) throws {
             }
     }
     
-    app.get("userDetails", ":id") { req -> EventLoopFuture<UserDetails> in
-        
+    app.get("userDetails", ":id") { req -> EventLoopFuture<Response> in
         guard let id = req.parameters.get("id") else {
-            print(req.parameters)
-            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "An ID is requiered"))
-            
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "An ID is required"))
         }
         
         guard let userUuid = UUID(id) else {
             return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
         }
         
-        
         return UserDetails.query(on: req.db)
             .filter(\.$id == userUuid)
             .first()
-            .unwrap(or: Abort(.notFound, reason: "Account not found"))
+            .flatMap { userDetails -> EventLoopFuture<Response> in
+                if let userDetails = userDetails {
+                    let response = Response(
+                        status: .ok,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(userDetails)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        let apiResponse = ApiResponse(statusCode: 500, message: "Failed to encode user details")
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: apiResponse.message))
+                    }
+                } else {
+                    let apiResponse = ApiResponse(statusCode: 404, message: "User not found")
+                    let response = Response(
+                        status: .notFound,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(apiResponse)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Failed to encode API response"))
+                    }
+                }
+            }
+            .flatMapError { error in
+                if let error = error as? PostgresError {
+                    let apiResponse = ApiResponse(statusCode: 400, message: error.getErrorMessage())
+                    let response = Response(
+                        status: .badRequest,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(apiResponse)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Failed to encode API response"))
+                    }
+                } else {
+                    let apiResponse = ApiResponse(statusCode: 500, message: "Unexpected error occurred")
+                    let response = Response(
+                        status: .internalServerError,
+                        version: HTTPVersion(major: 1, minor: 1),
+                        headers: HTTPHeaders([("Content-Type", "application/json")])
+                    )
+                    do {
+                        try response.content.encode(apiResponse)
+                        return req.eventLoop.makeSucceededFuture(response)
+                    } catch {
+                        return req.eventLoop.makeFailedFuture(Abort(.internalServerError, reason: "Failed to encode API response"))
+                    }
+                }
+            }
     }
+
+
     
     app.get("accountInfo", ":id") { req -> EventLoopFuture<User> in
         
@@ -198,6 +311,27 @@ func routes(_ app: Application) throws {
                     return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 404, message: "Account not found"))
                 }
             }
+    }
+    
+    app.delete("deleteAccount", ":id") { req -> EventLoopFuture<ApiResponse> in
+        guard let id = req.parameters.get("id") else {
+            throw Abort(.badRequest)
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        let userDeleteFuture = User.query(on: req.db)
+             .filter(\.$id == userUuid)
+             .delete()
+
+         let userDetailsDeleteFuture = UserDetails.query(on: req.db)
+             .filter(\.$id == userUuid)
+             .delete()
+
+         return userDeleteFuture.and(userDetailsDeleteFuture)
+             .transform(to: ApiResponse(statusCode: 200, message: "User account successfully deleted"))
     }
 }
 
