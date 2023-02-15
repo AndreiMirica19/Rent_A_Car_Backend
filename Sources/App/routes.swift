@@ -175,5 +175,30 @@ func routes(_ app: Application) throws {
             }
     }
     
+    
+    app.put("changePassword") { req -> EventLoopFuture<ApiResponse> in
+        guard let id = req.query[String.self, at: "id"], let newPassword = req.query[String.self, at: "password"] else {
+            throw Abort(.badRequest)
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        return User.query(on: req.db)
+            .filter(\.$id == userUuid)
+            .first()
+            .flatMap { user in
+                if let user = user {
+                    user.password = newPassword
+                    return user.save(on: req.db).map {
+                        return ApiResponse(statusCode: 201, message: "Password updated")
+                    }
+                } else {
+                    return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 404, message: "Account not found"))
+                }
+            }
+    }
 }
+
 
