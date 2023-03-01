@@ -333,6 +333,12 @@ func routes(_ app: Application) throws {
          return userDeleteFuture.and(userDetailsDeleteFuture)
              .transform(to: ApiResponse(statusCode: 200, message: "User account successfully deleted"))
     }
-}
+    
+    app.get("cars") { req -> EventLoopFuture<[Car]> in
+        let carList = Helper().carList
+        return req.eventLoop.makeSucceededFuture(carList)
+    }
+        
+    }
 
 
