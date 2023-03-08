@@ -27,6 +27,9 @@ final class CarInfo: Model, Content {
     @Field(key: "model")
     var model: String
     
+    @Field(key: "carType")
+    var carType: String
+    
     @Field(key: "manufactureYear")
     var manufactureYear: String
     

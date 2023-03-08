@@ -19,6 +19,7 @@ struct AddCar: AsyncMigration {
             .field("numberPlate", .string, .required)
             .field("manufacturer", .string, .required)
             .field("model", .string, .required)
+            .field("carType", .string, .required)
             .field("manufactureYear", .string, .required)
             .field("transmission", .string, .required)
             .field("color", .string, .required)
