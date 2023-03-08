@@ -338,6 +338,29 @@ func routes(_ app: Application) throws {
         let carList = Helper().carList
         return req.eventLoop.makeSucceededFuture(carList)
     }
+    
+    app.post("addCar") { req -> EventLoopFuture<ApiResponse> in
+        let carData = try req.content.decode(CarInfo.self)
+        return carData.save(on: req.db).map {
+            return ApiResponse(statusCode: 201, message: "Car Added")
+        }.flatMapError { error in
+            if let error = error as? PostgresError {
+                return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 400, message: error.getErrorMessage()))
+            }
+            return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 500, message: "Unexpected error occurred"))
+        }
+    }
+    
+    app.get("ownedCars") { req -> EventLoopFuture<[CarInfo]> in
+        guard let id = req.query[String.self, at: "owner_id"] else {
+            throw Abort(.badRequest)
+        }
+        
+        return CarInfo.query(on: req.db)
+            .filter(\.$ownerId == id)
+            .all()
+    }
+    
         
     }
 

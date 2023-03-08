@@ -12,13 +12,15 @@ public func configure(_ app: Application) throws {
         port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? PostgresConfiguration.ianaPortNumber,
         username: Environment.get("DATABASE_USERNAME") ?? "vapor_username",
         password: Environment.get("DATABASE_PASSWORD") ?? "vapor_password",
-        database: Environment.get("DATABASE_NAME") ?? "vapor_database"
+        database: Environment.get("DATABASE_NAME") ?? "vapor_database",
+        maxConnectionsPerEventLoop: 30
     ), as: .psql)
 
     // register routes
     
     app.migrations.add(CreateUser())
     app.migrations.add(UsersDetails())
+    app.migrations.add(AddCar())
 
     app.logger.logLevel = .debug
     // 3
