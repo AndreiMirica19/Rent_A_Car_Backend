@@ -361,6 +361,29 @@ func routes(_ app: Application) throws {
             .all()
     }
     
+    app.get("hostInfo") { req -> EventLoopFuture<HostInfo> in
+        guard let id = req.query[String.self, at: "id"] else {
+            throw Abort(.badRequest)
+        }
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        let userQuery = UserDetails.query(on: req.db)
+            .filter(\.$id == userUuid)
+            .first()
+            .unwrap(or: Abort(.notFound))
+        
+        let carQuery = CarInfo.query(on: req.db)
+              .filter(\.$ownerId == id)
+              .all()
+        
+        return userQuery.and(carQuery).flatMap { (user, cars) in
+            req.eventLoop.makeSucceededFuture(HostInfo(hostDetails: user, ownedCars: cars, reviews: []))
+        }
+    }
+    
         
     }
 
