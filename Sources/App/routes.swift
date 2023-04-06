@@ -99,7 +99,7 @@ func routes(_ app: Application) throws {
                     }
                 }
                 
-            } 
+            }
     }
     
     app.post("editUserDetails") { req -> EventLoopFuture<UserDetails> in
@@ -203,8 +203,8 @@ func routes(_ app: Application) throws {
                 }
             }
     }
-
-
+    
+    
     
     app.get("accountInfo", ":id") { req -> EventLoopFuture<User> in
         
@@ -323,15 +323,15 @@ func routes(_ app: Application) throws {
         }
         
         let userDeleteFuture = User.query(on: req.db)
-             .filter(\.$id == userUuid)
-             .delete()
-
-         let userDetailsDeleteFuture = UserDetails.query(on: req.db)
-             .filter(\.$id == userUuid)
-             .delete()
-
-         return userDeleteFuture.and(userDetailsDeleteFuture)
-             .transform(to: ApiResponse(statusCode: 200, message: "User account successfully deleted"))
+            .filter(\.$id == userUuid)
+            .delete()
+        
+        let userDetailsDeleteFuture = UserDetails.query(on: req.db)
+            .filter(\.$id == userUuid)
+            .delete()
+        
+        return userDeleteFuture.and(userDetailsDeleteFuture)
+            .transform(to: ApiResponse(statusCode: 200, message: "User account successfully deleted"))
     }
     
     app.get("cars") { req -> EventLoopFuture<[Car]> in
@@ -366,6 +366,7 @@ func routes(_ app: Application) throws {
             throw Abort(.badRequest)
         }
         
+        
         guard let userUuid = UUID(id) else {
             return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
         }
@@ -376,15 +377,69 @@ func routes(_ app: Application) throws {
             .unwrap(or: Abort(.notFound))
         
         let carQuery = CarInfo.query(on: req.db)
-              .filter(\.$ownerId == id)
-              .all()
+            .filter(\.$ownerId == id)
+            .all()
         
         return userQuery.and(carQuery).flatMap { (user, cars) in
             req.eventLoop.makeSucceededFuture(HostInfo(hostDetails: user, ownedCars: cars, reviews: []))
         }
     }
     
+    app.get("allCars") { req -> EventLoopFuture<[CarInfo]> in
         
+        return CarInfo.query(on: req.db)
+            .all()
     }
+    
+    app.put("toggleFavoriteCar") { req -> EventLoopFuture<[CarInfo]> in
+        
+        guard let id = req.query[String.self, at: "id"], let carId = req.query[String.self, at: "carId"] else {
+            throw Abort(.badRequest)
+        }
+        
+        
+        guard let userUuid = UUID(id) else {
+            return req.eventLoop.makeFailedFuture(Abort(.badRequest, reason: "Invalid uuid format"))
+        }
+        
+        
+        return UserDetails.query(on: req.db)
+            .filter(\.$id == userUuid)
+            .first()
+            .unwrap(or: Abort(.notFound))
+            .flatMap { userDetails in
+                if userDetails.favoriteCars.firstIndex(of: carId) != nil {
+                    userDetails.favoriteCars.removeAll(where: { $0 == carId })
+                } else {
+                    userDetails.favoriteCars.append(carId)
+                }
+                return userDetails.save(on: req.db).flatMap{
+                    
+                    let favoriteCarIds = userDetails.favoriteCars.compactMap { UUID(uuidString: $0) }
+                    return CarInfo.query(on: req.db)
+                        .filter(\.$id ~~ favoriteCarIds)
+                        .all()
+                }
+            }
+    }
+    
+    app.get("favoriteCars") { req -> EventLoopFuture<[CarInfo]> in
+        guard let id = req.query[String.self, at: "id"],
+              let userUuid = UUID(uuidString: id)
+        else {
+            throw Abort(.badRequest)
+        }
+        return UserDetails.query(on: req.db)
+                .filter(\.$id == userUuid)
+                .first()
+                .unwrap(or: Abort(.notFound))
+                .flatMap { userDetails in
+                    let favoriteCarIds = userDetails.favoriteCars.compactMap { UUID(uuidString: $0) }
+                    return CarInfo.query(on: req.db)
+                        .filter(\.$id ~~ favoriteCarIds)
+                        .all()
+                }
+    }
+}
 
 

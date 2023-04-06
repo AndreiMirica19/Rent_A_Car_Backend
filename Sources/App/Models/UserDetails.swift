@@ -33,4 +33,7 @@ final class UserDetails: Model, Content {
     
     @Field(key: "spokenLanguages")
     var spokenLanguages: [String]
+    
+    @Field(key: "favoriteCars")
+    var favoriteCars: [String]
 }

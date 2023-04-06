@@ -21,6 +21,7 @@ struct UsersDetails: AsyncMigration {
                .field("job", .string, .required)
                .field("profileImage", .data, .required)
                .field("spokenLanguages", .array(of: .string), .required)
+               .field("favoriteCars", .array(of: .string), .required)
                .create()
        }
     
