@@ -575,12 +575,27 @@ func routes(_ app: Application) throws {
             }
         }
     }
-
-
-
-
-
-
+    
+    app.put("updateStatus") { req -> EventLoopFuture<ApiResponse> in
+        guard let id = req.query[String.self, at: "id"], let status = req.query[String.self, at: "status"], let bookingUUID = UUID(uuidString: id) else {
+            throw Abort(.badRequest)
+        }
+        
+        let bookingsFuture = Booking.query(on: req.db)
+            .filter(\.$id == bookingUUID)
+            .first()
+            
+        return bookingsFuture.flatMap { booking -> EventLoopFuture<ApiResponse> in
+            guard let booking = booking else {
+                let response = ApiResponse( statusCode: 404, message: "Booking not found")
+                return req.eventLoop.makeSucceededFuture(response)
+            }
+            
+            booking.status = status
+            
+            return booking.save(on: req.db).transform(to: ApiResponse(statusCode: 200, message: "Booking updated successfully"))
+        }
+    }
 }
 
 

@@ -13,7 +13,7 @@ public func configure(_ app: Application) throws {
         username: Environment.get("DATABASE_USERNAME") ?? "vapor_username",
         password: Environment.get("DATABASE_PASSWORD") ?? "vapor_password",
         database: Environment.get("DATABASE_NAME") ?? "vapor_database",
-        maxConnectionsPerEventLoop: 30
+        maxConnectionsPerEventLoop: 100
     ), as: .psql)
 
     // register routes
