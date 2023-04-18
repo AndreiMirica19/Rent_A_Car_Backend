@@ -21,6 +21,7 @@ public func configure(_ app: Application) throws {
     app.migrations.add(CreateUser())
     app.migrations.add(UsersDetails())
     app.migrations.add(AddCar())
+    app.migrations.add(AddBooking())
 
     app.logger.logLevel = .debug
     // 3
