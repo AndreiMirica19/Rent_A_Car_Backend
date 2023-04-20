@@ -450,7 +450,7 @@ func routes(_ app: Application) throws {
             .flatMap { existingUser in
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-
+                
                 if let fromDate = dateFormatter.date(from: createBooking.fromDate), let toDate = dateFormatter.date(from: createBooking.toDate) {
                     let booking = Booking(ownerId: createBooking.ownerId,
                                           renterId: createBooking.renterId,
@@ -464,7 +464,7 @@ func routes(_ app: Application) throws {
                 } else {
                     return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 400, message: "Wrong date format"))
                 }
-       
+                
             }.flatMapError { error in
                 if let error = error as? Abort {
                     return req.eventLoop.makeSucceededFuture(ApiResponse(statusCode: 400, message: error.reason))
@@ -481,19 +481,19 @@ func routes(_ app: Application) throws {
         guard let id = req.query[String.self, at: "id"] else {
             throw Abort(.badRequest)
         }
-
+        
         let bookingsFuture = Booking.query(on: req.db)
             .filter(\.$renterId == id)
             .all()
-
+        
         return bookingsFuture.flatMap { bookings -> EventLoopFuture<[BookingInfo]> in
             var bookingFutures: [EventLoopFuture<BookingInfo?>] = []
-
+            
             for booking in bookings {
                 guard let hostId = UUID(booking.ownerId), let renterId = UUID(booking.renterId), let carId = UUID(booking.carId) else {
                     return req.eventLoop.makeFailedFuture(Abort(.notFound))
                 }
-
+                
                 let hostQuery = UserDetails.query(on: req.db)
                     .filter(\.$id == hostId)
                     .first()
@@ -580,19 +580,19 @@ func routes(_ app: Application) throws {
         guard let id = req.query[String.self, at: "id"] else {
             throw Abort(.badRequest)
         }
-
+        
         let bookingsFuture = Booking.query(on: req.db)
             .filter(\.$ownerId == id)
             .all()
-
+        
         return bookingsFuture.flatMap { bookings -> EventLoopFuture<[BookingInfo]> in
             var bookingFutures: [EventLoopFuture<BookingInfo?>] = []
-
+            
             for booking in bookings {
                 guard let hostId = UUID(booking.ownerId), let renterId = UUID(booking.renterId), let carId = UUID(booking.carId) else {
                     return req.eventLoop.makeFailedFuture(Abort(.notFound))
                 }
-
+                
                 let hostQuery = UserDetails.query(on: req.db)
                     .filter(\.$id == hostId)
                     .first()
@@ -683,7 +683,7 @@ func routes(_ app: Application) throws {
         let bookingsFuture = Booking.query(on: req.db)
             .filter(\.$id == bookingUUID)
             .first()
-            
+        
         return bookingsFuture.flatMap { booking -> EventLoopFuture<ApiResponse> in
             guard let booking = booking else {
                 let response = ApiResponse( statusCode: 404, message: "Booking not found")
@@ -695,6 +695,106 @@ func routes(_ app: Application) throws {
             return booking.save(on: req.db).transform(to: ApiResponse(statusCode: 200, message: "Booking updated successfully"))
         }
     }
+    
+    app.get("hostStats") { req -> EventLoopFuture<HostStats> in
+        guard let id = req.query[String.self, at: "id"] else {
+            throw Abort(.badRequest)
+        }
+        
+        let bookingsFuture = Booking.query(on: req.db)
+            .filter(\.$ownerId == id)
+            .all()
+        
+        return bookingsFuture.flatMap { bookings -> EventLoopFuture<HostStats> in
+            var bookingFutures: [EventLoopFuture<BookingInfo?>] = []
+            
+            for booking in bookings {
+                guard let hostId = UUID(booking.ownerId), let renterId = UUID(booking.renterId), let carId = UUID(booking.carId) else {
+                    return req.eventLoop.makeFailedFuture(Abort(.notFound))
+                }
+                
+                let hostQuery = UserDetails.query(on: req.db)
+                    .filter(\.$id == hostId)
+                    .first()
+                    .unwrap(or: Abort(.notFound))
+                
+                hostQuery.whenFailure { error in
+                    req.logger.error("Error in hostQuery: \(error)")
+                }
+                
+                let hostCarsQuery = CarInfo.query(on: req.db)
+                    .filter(\.$ownerId == booking.ownerId)
+                    .all()
+                
+                hostCarsQuery.whenFailure { error in
+                    req.logger.error("Error in hostCarsQuery: \(error)")
+                }
+                
+                let renterQuery = UserDetails.query(on: req.db)
+                    .filter(\.$id == renterId)
+                    .first()
+                    .unwrap(or: Abort(.notFound))
+                
+                renterQuery.whenFailure { error in
+                    req.logger.error("Error in renterQuery: \(error)")
+                }
+                
+                let carInfoQuery = CarInfo.query(on: req.db)
+                    .filter(\.$id == carId)
+                    .first()
+                
+                carInfoQuery.whenFailure { error in
+                    req.logger.error("Error in carInfoQuery: \(error)")
+                }
+                let bookingFuture: EventLoopFuture<BookingInfo?> = hostQuery.and(hostCarsQuery).and(renterQuery).and(carInfoQuery).flatMap { tuple in
+                    let (((host, hostCars), renter), carInfo) = tuple
+                    guard let carInfo = carInfo else {
+                        return req.eventLoop.makeSucceededFuture(nil)
+                    }
+                    let hostDetails = HostInfo(hostDetails: host, ownedCars: hostCars, reviews: [])
+                    let bookingInfo = BookingInfo(id: booking.id ?? UUID(),
+                                                  hostInfo: hostDetails,
+                                                  renterDetails: renter,
+                                                  carInfo: carInfo,
+                                                  fromDate: booking.fromDate,
+                                                  toDate: booking.toDate,
+                                                  status: booking.status)
+                    return req.eventLoop.makeSucceededFuture(bookingInfo)
+                }
+                
+                bookingFutures.append(bookingFuture)
+                
+                bookingFuture.whenSuccess { bookingInfo in
+                    if let bookingInfo = bookingInfo {
+                        req.logger.info("Booking Info: \(bookingInfo)")
+                    } else {
+                        req.logger.info("Booking Info is nil")
+                    }
+                }
+                
+                bookingFuture.whenFailure { error in
+                    req.logger.error("Error in bookingFuture: \(error)")
+                }
+            }
+            
+            let allBookingsFuture = EventLoopFuture.whenAllComplete(bookingFutures, on: req.eventLoop)
+            
+            return allBookingsFuture.flatMap { results in
+                let bookings = results.compactMap { result -> BookingInfo? in
+                    if case .success(let booking) = result {
+                        return booking
+                    } else {
+                        return nil
+                    }
+                }
+                return req.eventLoop.makeSucceededFuture(Helper.getHostStats(bookings: bookings))
+            }.flatMapError { error in
+                req.logger.error("Error in allBookingsFuture: \(error)")
+                return req.eventLoop.makeFailedFuture(Abort(.internalServerError))
+            }
+        }
+    }
+    
 }
 
 

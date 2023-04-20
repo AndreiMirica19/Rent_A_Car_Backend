@@ -455,4 +455,36 @@ struct Helper {
         ]
         
     }
+    
+    static func daysBetweenDates(_ fromDate: Date, _ toDate: Date) -> Int? {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: fromDate, to: toDate)
+        return components.day
+    }
+    
+    static func getHostStats(bookings: [BookingInfo]) -> HostStats {
+        var totalEarnings = 0
+        
+        bookings.forEach { totalEarnings += (Helper.daysBetweenDates($0.fromDate, $0.toDate) ?? 0) * (Int($0.carInfo.price) ?? 0) }
+        
+        let completedBookings = bookings.filter { $0.status == "Completed" }
+
+        
+        let mostBookedCarId: UUID? = completedBookings.reduce(into: [:]) { counts, booking in
+            counts[booking.carInfo.id, default: 0] += 1
+        }.max { $0.value < $1.value }?.key
+        
+        let mostBookedCar: CarInfo?
+        
+        if let mostBookedCarId = mostBookedCarId,
+           let mostBookedBooking = bookings.first(where: { $0.carInfo.id == mostBookedCarId }) {
+            mostBookedCar = mostBookedBooking.carInfo
+            return HostStats(totalEarnings: totalEarnings, completedBookings: completedBookings.count, numberOfReviews: 40, numberOfStars: 10, mostBookedCar: mostBookedCar)
+          
+        }
+        
+        return HostStats(totalEarnings: totalEarnings, completedBookings: completedBookings.count, numberOfReviews: 40, numberOfStars: 10, mostBookedCar: nil)
+    }
+    
+   
 }
